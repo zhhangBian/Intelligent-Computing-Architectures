@@ -2,6 +2,7 @@ import numpy as np
 import time
 
 from model import neuralNetwork
+# from network import neuralNetwork
 from utils import load_mnist
 
 
@@ -73,7 +74,6 @@ def train(net, features, labels):
 
 
 if __name__ == '__main__':
-
     # get training and testing data
     path = './dataset/'
     train_images, train_labels = load_mnist(path, kind='train')
@@ -82,13 +82,14 @@ if __name__ == '__main__':
     # number of input, hidden and output nodes
     input_nodes = 784
     hidden_nodes = 200
+    hidden_depth = 2
     output_nodes = 10
 
     # learning rate
     learning_rate = 0.1
 
     # create instance of neural network
-    model = neuralNetwork(input_nodes, hidden_nodes, output_nodes, learning_rate)
+    model = neuralNetwork(input_nodes, hidden_nodes, hidden_depth, output_nodes, learning_rate)
 
     # record start training time
     start_training_time = time.time()
@@ -103,7 +104,8 @@ if __name__ == '__main__':
 
     # Save weight parameters
     np.save('./weights/who.npy', model.who)
+    for i in range(model.hidden_depth - 1):
+        np.save(f'./weights/whh_{i}.npy', model.wih)
     np.save('./weights/whi.npy', model.wih)
 
     print("Done.")
-
