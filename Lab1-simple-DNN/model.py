@@ -58,7 +58,8 @@ class neuralNetwork:
         hidden_inputs = np.dot(self.wih, self.inputs)
         for i in range(self.hidden_depth):
             self.hidden_outputs_list[i] = self.activation_function(hidden_inputs)
-            hidden_inputs = np.dot(self.whh_list[i - 1], self.hidden_outputs_list[i])
+            if i > 0:
+                hidden_inputs = np.dot(self.whh_list[i - 1], self.hidden_outputs_list[i])
 
         # calculate the signals emerging from hidden layer
         # self.hidden_outputs = self.activation_function(hidden_inputs)
@@ -102,8 +103,9 @@ class neuralNetwork:
 
         # update the weights for the links between the hidden layers
         for i in reversed(range(self.hidden_depth - 1)):
-            self.whh_list[i] -= self.learning_rate * np.dot(hidden_delta[i + 1],
-                                                            np.transpose(self.hidden_outputs_list[i]))
+            self.whh_list[i] -= (self.learning_rate *
+                                 np.dot(hidden_delta[i + 1],
+                                        np.transpose(self.hidden_outputs_list[i])))
 
         # update the weights for the links between the input and hidden layers
         self.wih -= self.learning_rate * np.dot(hidden_delta[0], np.transpose(self.inputs))

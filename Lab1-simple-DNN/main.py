@@ -82,7 +82,7 @@ if __name__ == '__main__':
     # number of input, hidden and output nodes
     input_nodes = 784
     hidden_nodes = 200
-    hidden_depth = 100
+    hidden_depth = 4
     output_nodes = 10
 
     # learning rate
