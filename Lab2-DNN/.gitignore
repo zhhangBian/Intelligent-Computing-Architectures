@@ -1,0 +1,6 @@
+.gitignore
+
+.idea
+.vscode
+
+__pycache__
