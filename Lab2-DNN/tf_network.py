@@ -9,27 +9,27 @@ class LeNet:
         self.input_shape = input_shape
 
         self.net = keras.Sequential([
-            # 卷积层1
+            # layer1
             keras.layers.Conv2D(self.filters,
                                 kernel_size=self.kernel_size),
             keras.layers.MaxPooling2D(pool_size=2, strides=2),
             keras.layers.ReLU(),
 
-            # 卷积层2
+            # layer2
             keras.layers.Conv2D(16, kernel_size=self.kernel_size),
             keras.layers.MaxPooling2D(pool_size=2, strides=2),
             keras.layers.ReLU(),
 
-            # 卷积层3
+            # layer3
             keras.layers.Conv2D(120, kernel_size=self.kernel_size),
             keras.layers.ReLU(),
             keras.layers.Flatten(),
 
-            # 全连接层1
+            # dense1
             # 120*84
             keras.layers.Dense(84, activation='relu'),
 
-            # 全连接层2
+            # dense2
             # 84*10
             keras.layers.Dense(10, activation='softmax')
         ])
@@ -51,3 +51,6 @@ class LeNet:
 
     def test(self, test_db):
         return self.net.evaluate(test_db)
+
+    def summary(self):
+        return self.net.summary()

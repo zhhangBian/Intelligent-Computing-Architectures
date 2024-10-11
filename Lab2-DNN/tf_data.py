@@ -27,10 +27,10 @@ def _get_test_data(x_test, y_test):
 
 
 def get_train_test_data():
-    # 加载数据集
+    # load mnist
     (x_train, y_train), (x_test, y_test) = tf.keras.datasets.fashion_mnist.load_data()
 
-    # 样本图像周围补0（上下左右均补2个0），将28*28的图像转成32*32的图像
+    # padding 28*28 to 32*32
     paddings = tf.constant([[0, 0], [2, 2], [2, 2]])
     x_train = tf.pad(x_train, paddings)
     x_test = tf.pad(x_test, paddings)
