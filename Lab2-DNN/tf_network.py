@@ -1,62 +1,53 @@
 import tensorflow as tf
+from tensorflow import keras
 
 
 class LeNet:
+    def __init__(self, input_shape, kernel_size=(5, 5)):
+        self.filters = 6
+        self.kernel_size = kernel_size
+        self.input_shape = input_shape
 
-    def __init__(self):
-        """
-        Define some basic parameters here
-        """
+        self.net = keras.Sequential([
+            # 卷积层1
+            keras.layers.Conv2D(self.filters,
+                                kernel_size=self.kernel_size),
+            keras.layers.MaxPooling2D(pool_size=2, strides=2),
+            keras.layers.ReLU(),
 
-        pass
+            # 卷积层2
+            keras.layers.Conv2D(16, kernel_size=self.kernel_size),
+            keras.layers.MaxPooling2D(pool_size=2, strides=2),
+            keras.layers.ReLU(),
 
-    def net(self, feats):
-        """
-        Define network.
-        You can use init_weight() and init_bias() function to init weight matrix,
-        for example:
-            conv1_W = self.init_weight((3, 3, 1, 6))
-            conv1_b = self.init_bias(6)
-        :param feats: input features
-        :return: logits
+            # 卷积层3
+            keras.layers.Conv2D(120, kernel_size=self.kernel_size),
+            keras.layers.ReLU(),
+            keras.layers.Flatten(),
 
-        python版本3.5-3.7，tensorflow版本1.15.0
-        下载sklearn库：`pip install scikit-learn
-        """
-        # layer 1
-        # TODO: construct the conv1
-        # layer 2
-        # TODO: construct the pool1
-        # layer 3
-        # TODO: construct the conv2
-        # layer 4
-        # TODO: construct the pool2
-        # layer 5
-        # TODO: construct the fc1
-        # layer 2
-        # TODO: construct the fc2
+            # 全连接层1
+            # 120*84
+            keras.layers.Dense(84, activation='relu'),
 
-        pass
-        
+            # 全连接层2
+            # 84*10
+            keras.layers.Dense(10, activation='softmax')
+        ])
+        self.net.build(input_shape=input_shape)
 
-    def forward(self, feats):
-        """
-        Forward the network
-        """
-        return self.net(feats)
+    def train(self,
+              train_db,
+              epoch=50,
+              log_dir='logs/',
+              optimizer=keras.optimizers.Adam(),
+              loss=keras.losses.CategoricalCrossentropy(),
+              metrics=['accuracy']):
+        self.net.compile(optimizer=optimizer, loss=loss, metrics=metrics)
+        history = self.net.fit(train_db,
+                               epochs=epoch,
+                               callbacks=[tf.keras.callbacks.TensorBoard(log_dir)])
 
-    @staticmethod
-    def init_weight(shape):
-        """
-        Init weight parameter.
-        """
-        w = tf.truncated_normal(shape=shape, mean=0, stddev=0.1)
-        return tf.Variable(w)
+        return history
 
-    @staticmethod
-    def init_bias(shape):
-        """
-        Init bias parameter.
-        """
-        b = tf.zeros(shape)
-        return tf.Variable(b)
+    def test(self, test_db):
+        return self.net.evaluate(test_db)
