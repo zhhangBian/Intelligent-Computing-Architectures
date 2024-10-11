@@ -25,12 +25,10 @@ class LeNet:
             keras.layers.ReLU(),
             keras.layers.Flatten(),
 
-            # dense1
-            # 120*84
+            # fc1
             keras.layers.Dense(84, activation='relu'),
 
-            # dense2
-            # 84*10
+            # fc1
             keras.layers.Dense(10, activation='softmax')
         ])
         self.net.build(input_shape=input_shape)
@@ -41,16 +39,21 @@ class LeNet:
               log_dir='logs/',
               optimizer=keras.optimizers.Adam(),
               loss=keras.losses.CategoricalCrossentropy(),
-              metrics=['accuracy']):
+              metrics=['accuracy'],
+              verbose=1):
         self.net.compile(optimizer=optimizer, loss=loss, metrics=metrics)
         history = self.net.fit(train_db,
                                epochs=epoch,
-                               callbacks=[tf.keras.callbacks.TensorBoard(log_dir)])
+                               callbacks=[tf.keras.callbacks.TensorBoard(log_dir)],
+                               verbose=verbose)
 
         return history
 
-    def test(self, test_db):
-        return self.net.evaluate(test_db)
+    def test(self, test_db, verbose=1):
+        return self.net.evaluate(test_db, verbose=verbose)
+
+    def save(self, path='./model'):
+        tf.keras.models.save_model(self.net, path, save_format='tf')
 
     def summary(self):
         return self.net.summary()
