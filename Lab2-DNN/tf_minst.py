@@ -17,8 +17,9 @@ def plot_loss(loss, filename='./img/loss.png'):
     plt.savefig(filename)
 
 
-batch = 32
+batch_size = 32
 epoch = 50
+lr = 0.01
 
 if __name__ == "__main__":
     program_start_time = time.time()
@@ -29,12 +30,13 @@ if __name__ == "__main__":
 
     train_db, test_db = get_train_test_data()
 
-    net = LeNet(input_shape=(batch, 32, 32, 1))
+    net = LeNet(input_shape=(batch_size, 32, 32, 1))
     net.summary()
 
     # train
     start_training_time = time.time()
-    history = net.train(train_db, epoch=epoch, log_dir=log_dir)
+    history = net.train(train_db, epoch=epoch, lr=lr, batch_size=batch_size,
+                        log_dir=log_dir)
     plot_loss(history.history['loss'])
     print("Training time: {:.3f}s.\n".format(time.time() - start_training_time))
 

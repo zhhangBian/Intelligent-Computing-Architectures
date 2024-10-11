@@ -28,22 +28,25 @@ class LeNet:
             # fc1
             keras.layers.Dense(84, activation='relu'),
 
-            # fc1
+            # fc2
             keras.layers.Dense(10, activation='softmax')
         ])
+
         self.net.build(input_shape=input_shape)
 
     def train(self,
               train_db,
               epoch=50,
               log_dir='logs/',
-              optimizer=keras.optimizers.Adam(),
+              lr=0.001,
+              batch_size=32,
               loss=keras.losses.CategoricalCrossentropy(),
               metrics=['accuracy'],
               verbose=1):
-        self.net.compile(optimizer=optimizer, loss=loss, metrics=metrics)
+        self.net.compile(optimizer=keras.optimizers.Adam(lr), loss=loss, metrics=metrics)
         history = self.net.fit(train_db,
                                epochs=epoch,
+                               batch_size=batch_size,
                                callbacks=[tf.keras.callbacks.TensorBoard(log_dir)],
                                verbose=verbose)
 
