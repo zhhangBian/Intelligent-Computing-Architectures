@@ -1,35 +1,35 @@
 import tensorflow as tf
 from tensorflow import keras
+from keras.layers import *
 
 
 class LeNet:
-    def __init__(self, input_shape, kernel_size=(5, 5)):
+    def __init__(self, input_shape, kernel_size=(5, 5), activation='softmax'):
         self.filters = 6
         self.kernel_size = kernel_size
         self.input_shape = input_shape
 
         self.net = keras.Sequential([
             # layer1
-            keras.layers.Conv2D(self.filters,
-                                kernel_size=self.kernel_size),
-            keras.layers.MaxPooling2D(pool_size=2, strides=2),
-            keras.layers.ReLU(),
+            Conv2D(self.filters, kernel_size=self.kernel_size),
+            MaxPooling2D(pool_size=2, strides=2),
+            ReLU(),
 
             # layer2
-            keras.layers.Conv2D(16, kernel_size=self.kernel_size),
-            keras.layers.MaxPooling2D(pool_size=2, strides=2),
-            keras.layers.ReLU(),
+            Conv2D(16, kernel_size=self.kernel_size),
+            MaxPooling2D(pool_size=2, strides=2),
+            ReLU(),
 
             # layer3
-            keras.layers.Conv2D(120, kernel_size=self.kernel_size),
-            keras.layers.ReLU(),
-            keras.layers.Flatten(),
+            Conv2D(120, kernel_size=self.kernel_size),
+            ReLU(),
+            Flatten(),
 
             # fc1
-            keras.layers.Dense(84, activation='relu'),
+            Dense(84, activation='relu'),
 
             # fc2
-            keras.layers.Dense(10, activation='softmax')
+            Dense(10, activation=activation)
         ])
 
         self.net.build(input_shape=input_shape)
