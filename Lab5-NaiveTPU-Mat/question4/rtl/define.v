@@ -8,6 +8,7 @@
 `define FLAG_START  32'h0000_0001
 `define FLAG_FINISH 32'h0000_0000
 
+// 修改了步进
 `define F_MEM_INCR  32'd8
 `define W_MEM_INCR  32'd16
 `define O_MEM_INCR  32'd4

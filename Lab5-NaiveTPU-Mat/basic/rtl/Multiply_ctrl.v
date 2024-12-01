@@ -33,11 +33,14 @@ module Multiply_ctrl(
     output reg  [15:0]  num_ori,
 
     // 与输出align的控制信号
+    // 由于有两个乘法单元，故需要两个参数
     output reg  [7:0]   sub_scale_M1,
     output reg  [7:0]   sub_scale_P1,
     output reg  [7:0]   sub_scale_M2,
     output reg  [7:0]   sub_scale_P2,
+    // 第一个对齐单元已经对齐完成
     input               align_fifo_get_all1,
+    // 第二个对齐单元已经对齐完成
     input               align_fifo_get_all2
 );
 
@@ -149,18 +152,22 @@ always @(posedge clk or posedge rst) begin
         num_ori      <= 'b0;
     end
     else if (n_state == INFO) begin
+        // 对齐M次
         sub_scale_M1 <= sub_M;
-        sub_scale_P1 <= (sub_P > 'd8)? 'd8: sub_P;
         sub_scale_M2 <= sub_M;
+        // 需要的对齐单元数，要考虑是否需要两个单元
+        sub_scale_P1 <= (sub_P > 'd8)? 'd8: sub_P;
         sub_scale_P2 <= (sub_P > 'd8)? (sub_P - 'd8): 'd0;
+
         num_valid <= 1'b1;
         num_ori <= N;
     end
     else begin
         sub_scale_M1 <= sub_scale_M1;
-        sub_scale_P1 <= sub_scale_P1;
         sub_scale_M2 <= sub_scale_M2;
+        sub_scale_P1 <= sub_scale_P1;
         sub_scale_P2 <= sub_scale_P2;
+
         num_valid    <= 'b0;
         num_ori      <= num_ori;
     end
@@ -210,8 +217,10 @@ always @(posedge clk or posedge rst) begin
     else if (c_state == IDLE) begin
         align_fifo_get_all <= 'b0;
     end
+
     // 当下进行状态转移
     else if (c_state == WORK && n_state == WAIT) begin
+        // 为0：不需要搬运数据
         if ((sub_scale_M1 == 'b0 || sub_scale_P1 == 'b0) && (sub_scale_M2 == 'b0 || sub_scale_P2 == 'b0))
             align_fifo_get_all <= 2'b11;
         else if (sub_scale_M1 == 'b0 || sub_scale_P1 == 'b0)
@@ -222,13 +231,16 @@ always @(posedge clk or posedge rst) begin
             align_fifo_get_all <= align_fifo_get_all;
     end
 
+    // 对齐完毕的控制信号
     else if (c_state == WAIT) begin
         if (align_fifo_get_all1 && align_fifo_get_all2) begin
             align_fifo_get_all <= 2'b11;
         end
+        // 第一个对齐单元完成
         else if (align_fifo_get_all1) begin
             align_fifo_get_all <= {align_fifo_get_all[1], 1'b1};
         end
+        // 第二个对齐单元完成
         else if (align_fifo_get_all2) begin
             align_fifo_get_all <= {1'b1, align_fifo_get_all[0]};
         end
