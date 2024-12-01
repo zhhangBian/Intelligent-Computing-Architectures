@@ -2,11 +2,11 @@ import numpy as np
 import random
 
 # 注意M*N和N*P不应过大，否则BRAM_FM64和BRAM_WM128地址有可能超位宽引起出错。
-# 
+#
 # 问题1：依据工程中BRAM_FM64和BRAM_WM128的位宽、地址深度，写出M、N、P取值的限制。
 # 问题2：依据mlp和lenet模型，计算当前BRAM_FM32、BRAM_WM32、BRAM_FM64和BRAM_WM128大小是否足够。
 #       注意，BRAM_FM32、BRAM_WM32指Block Design中例化的，不是MM_top_tb.v中的tb_ram。
-#       
+#
 # 拓展训练：修改MM_top_tb.v，利用$random函数在MM_top_tb.v中产生随机的M、N、P，依据产生的M、N、P来产生随机输入矩阵。
 #          之后，计算两个随机矩阵相乘的结果（三层for循环嵌套，注意不需要有时钟限制，仿真表现为立马算出结果），将结果暂存。
 #          将随机矩阵送入MM_top模块，待得到运算结果，和暂存的结果进行比较，打印出是否出错等必要信息。
