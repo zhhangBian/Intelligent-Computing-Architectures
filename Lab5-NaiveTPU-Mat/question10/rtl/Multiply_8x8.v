@@ -4,6 +4,7 @@ module Multiply_8x8(
   input clk, 
   input rst, 
   // f的输入数据
+  // ! 接线空置，不接入MAC
   input       fvalid0, 
   input [7:0] fdata0, 
   input       fvalid1, 
@@ -118,40 +119,38 @@ generate
   for(i = 1; i < 8; i = i + 1) begin
       for(j = 0; j < 8; j = j + 1) begin
           // 接收上方传入的数据
-          assign w_valid[8 *i + j]  = w_valid_r[8 *(i - 1) + j];
           assign w_data[8 *i + j]   = w_data_r[8 *(i - 1) + j];
       end
   end
 endgenerate
-// 特殊处理
-assign w_valid[0] = wvalid0;  assign w_data[0] = wdata0;
-assign w_valid[1] = wvalid1;  assign w_data[1] = wdata1;
-assign w_valid[2] = wvalid2;  assign w_data[2] = wdata2;
-assign w_valid[3] = wvalid3;  assign w_data[3] = wdata3;
-assign w_valid[4] = wvalid4;  assign w_data[4] = wdata4;
-assign w_valid[5] = wvalid5;  assign w_data[5] = wdata5;
-assign w_valid[6] = wvalid6;  assign w_data[6] = wdata6;
-assign w_valid[7] = wvalid7;  assign w_data[7] = wdata7;
+// 特殊处理、
+assign w_data[0] = wdata0;
+assign w_data[1] = wdata1;
+assign w_data[2] = wdata2;
+assign w_data[3] = wdata3;
+assign w_data[4] = wdata4;
+assign w_data[5] = wdata5;
+assign w_data[6] = wdata6;
+assign w_data[7] = wdata7;
 
 // 对于Feature矩阵的输入，为横向输入
 generate
   for(i = 0; i < 8; i = i + 1) begin
       for(j = 1; j < 8; j = j + 1) begin
           // 接收外部输入的数据
-          assign f_valid[8 *i + j]  = f_valid_r[8 *i + j - 1];
           assign f_data[8 *i + j]   = f_data_r[8 *i + j - 1];
       end
   end
 endgenerate
 // 特殊处理
-assign f_valid[0]   = fvalid0;  assign f_data[0]  = fdata0;
-assign f_valid[8]   = fvalid1;  assign f_data[8]  = fdata1;
-assign f_valid[16]  = fvalid2;  assign f_data[16] = fdata2;
-assign f_valid[24]  = fvalid3;  assign f_data[24] = fdata3;
-assign f_valid[32]  = fvalid4;  assign f_data[32] = fdata4;
-assign f_valid[40]  = fvalid5;  assign f_data[40] = fdata5;
-assign f_valid[48]  = fvalid6;  assign f_data[48] = fdata6;
-assign f_valid[56]  = fvalid7;  assign f_data[56] = fdata7;
+assign f_data[0]  = fdata0;
+assign f_data[8]  = fdata1;
+assign f_data[16] = fdata2;
+assign f_data[24] = fdata3;
+assign f_data[32] = fdata4;
+assign f_data[40] = fdata5;
+assign f_data[48] = fdata6;
+assign f_data[56] = fdata7;
 
 // MAC中数据的输出传递：均为纵向
 generate
@@ -159,12 +158,10 @@ generate
       for(j = 0; j < 8; j = j + 1) begin
           // 最后一行为0
           if(i == 7) begin
-              assign valid_l[8 * i + j]   = 1'b0;
               assign data_l[8 * i + j]    = 32'b0;
           end
           // 接收下方向上传递
           else begin
-              assign valid_l[8 * i + j]   = valid_o[8 * (i + 1) + j];
               assign data_l[8 * i + j]    = data_o[8 * (i + 1) + j];
           end
       end
@@ -176,22 +173,22 @@ generate
       MAC U_MAC(
           .clk          (clk           ), // input
           .rst          (rst           ), // input
+
           .num_valid    (num_valid[i]  ), // input
           .num          (num[i]        ), // input [31:0]
           .num_valid_r  (num_valid_r[i]), // output reg
           .num_r        (num_r[i]      ), // output reg
-          .w_valid      (w_valid[i]    ), // input
+
           .w_data       (w_data[i]     ), // input signed [7:0]
-          .w_valid_r    (w_valid_r[i]  ), // output reg
           .w_data_r     (w_data_r[i]   ), // output reg signed [7:0]
-          .f_valid      (f_valid[i]    ), // input
+
           .f_data       (f_data[i]     ), // input signed [7:0]
-          .f_valid_r    (f_valid_r[i]  ), // output reg
           .f_data_r     (f_data_r[i]   ), // output reg signed [7:0]
-          .valid_l      (valid_l[i]    ), // input
+
           .data_l       (data_l[i]     ), // input signed [31:0]
-          .valid_o      (valid_o[i]    ), // output reg
-          .data_o       (data_o[i]     )  // output reg signed [31:0]
+          .data_o       (data_o[i]     ), // output reg signed [31:0]
+
+          .valid_o      (valid_o[i]    )  // output reg
   );
   end
 endgenerate

@@ -90,7 +90,7 @@ assign fifo_data_in[7] = data_get7;
 generate
   for (i = 0; i < 8; i = i + 1) begin
     // 使用了IP，实例化8个fifo
-    out_align_fifo U_out_align_fifo(
+    my_fifo my_fifo(
       .clk   (clk),
       // 写使能
       .wr_en (fifo_wr_en[i]),
@@ -100,8 +100,6 @@ generate
       .din   (fifo_data_in[i]),
       // 输出数据
       .dout  (fifo_data_out[i]),
-      // fifo是否满，空置
-      .full  (),
       // fifo是否为空
       .empty (fifo_empty[i])
     );

@@ -247,6 +247,7 @@ always @(posedge arm_clk or posedge rst) begin
     end
 end
 
+// 分别执行两轮测试，为testcase1和testcase2
 initial begin
     while(1) begin
         file_FM = $fopen("H:\\Intelligent-Computing-Architectures\\Lab5-NaiveTPU-Mat\\basic\\tb\\test1\\FM.txt","r");
@@ -351,6 +352,7 @@ initial begin
     fp_w = $fopen("H:\\Intelligent-Computing-Architectures\\Lab5-NaiveTPU-Mat\\basic\\tb\\tb_MMout.txt","w");
 end
 
+// 设置相应的参数
 initial begin
     clk = 1'b0;
     arm_clk = 1'b0;
@@ -364,6 +366,7 @@ initial begin
     arm_work = 1'b1;
 end
 
+// 时钟变化
 always #5 clk = ~clk;
 always #7.5 arm_clk = ~arm_clk;
 
