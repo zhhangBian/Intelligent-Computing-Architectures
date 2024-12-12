@@ -67,16 +67,12 @@ wire    [  31:   0]   BRAM_WM32_addr_change;
 wire    [  31:   0]   BRAM_CTRL_addr_change;
 wire    [  31:   0]   BRAM_OUT_addr_change ;
 
-integer file_FM;
-integer file_WM;
-integer file_para;
-
-integer fp_w;
-
 integer line_FM;
 integer line_WM;
 integer line_para;
 integer line_MMout;
+
+integer i, j, k;
 
 reg FM_reg_valid, WM_reg_valid;
 reg [7:0] FM_reg0, FM_reg1, FM_reg2, FM_reg3;
@@ -86,8 +82,6 @@ reg [15:0] M, N, P;
 
 reg [15:0] cnt;
 reg [15:0] cnt_f1;
-reg [15:0] cnt_f2;
-reg [15:0] cnt_f3;
 
 // 状态定义
 // 初始等待状态
@@ -115,8 +109,19 @@ reg [7:0] c_state_f3;
 // 下一个状态，使用组合逻辑
 reg [7:0] n_state;
 
-// 当前状态的转义逻辑
+// 实验的循环次数
+reg [15:0] test_cnt;
 
+// 记录数据
+reg [0:7] feature [0:200][0:200];
+reg [0:7] weight  [0:200][0:200];
+reg [0:7] result_cnt;
+reg signed [31:0] result_std;
+reg [31:0] result_sim [0:40000];
+reg error_flag;
+reg finish_flag;
+
+// 当前状态的转义逻辑
 always @(posedge arm_clk or posedge rst) begin
     if (rst) begin
         c_state <= IDLE;
@@ -127,22 +132,18 @@ always @(posedge arm_clk or posedge rst) begin
 end
 
 always @(posedge arm_clk or posedge rst) begin
-    if (rst) begin
-        cnt_f1 <= 'b0;
-        cnt_f2 <= 'b0;
-        cnt_f3 <= 'b0;
-        c_state_f1 <= IDLE;
-        c_state_f2 <= IDLE;
-        c_state_f3 <= IDLE;
-    end
-    else begin
-        cnt_f1 <= cnt;
-        cnt_f2 <= cnt_f1;
-        cnt_f3 <= cnt_f2;
-        c_state_f1 <= c_state;
-        c_state_f2 <= c_state_f1;
-        c_state_f3 <= c_state_f2;
-    end
+  if (rst) begin
+      cnt_f1 <= 'b0;
+      c_state_f1 <= IDLE;
+      c_state_f2 <= IDLE;
+      c_state_f3 <= IDLE;
+  end
+  else begin
+      cnt_f1 <= cnt;
+      c_state_f1 <= c_state;
+      c_state_f2 <= c_state_f1;
+      c_state_f3 <= c_state_f2;
+  end
 end
 
 // 定义状态转移
@@ -203,7 +204,7 @@ always @(*) begin
 
     // 完成计算
     FINISH: begin
-        n_state = IDLE;
+        n_state = finish_flag ? IDLE : FINISH;
     end
 
     default: begin
@@ -251,67 +252,123 @@ always @(posedge arm_clk or posedge rst) begin
   end
 end
 
-// 定义feature和weight
-reg [0:7] feature[0:200][0:200];
-reg [0:7] weight [0:200][0:200];
-reg signed [0:31] std_result;
-reg [0:31] sim_result [0:40000];
-reg flag;
-reg [31:0] count;
+// IDLE
+initial begin
+  test_cnt = 0;
+  while(1) begin
+      // 开始实验
+      wait(c_state == IDLE);
+      M = {$random} % 20 + 2;
+      N = {$random} % 20 + 2;
+      P = {$random} % 20 + 2;
+      $display("[%d]: M = %d, N = %d, P = %d", test_cnt, M, N, P);
 
-integer i, j, k, r;
+      FM_reg_valid = 1'b0;
+      FM_reg0 = 'b0;
+      FM_reg1 = 'b0;
+      FM_reg2 = 'b0;
+      FM_reg3 = 'b0;
 
-reg finish_sig;
+      WM_reg_valid = 1'b0;
+      WM_reg0 = 'b0;
+      WM_reg1 = 'b0;
+      WM_reg2 = 'b0;
+      WM_reg3 = 'b0;
 
+      test_cnt = test_cnt + 1;
+      result_cnt = 'b0;
+
+      finish_flag = 1'b0;
+
+      // 完成计算
+      wait(c_state == FINISH);
+      wait(result_cnt == M*P);
+
+      arm_work = 1'b0;
+      error_flag = 1'b0;
+      // 校验计算结果
+      // 计算std
+      error_flag = 1'b0;
+      for(i = 0; i < M; i = i + 1) begin
+        for(j = 0; j < P; j = j + 1) begin
+            result_std = 'b0;
+            for(k = 0; k < N; k = k + 1) begin
+                result_std = result_std + $signed(weight[k][j]) * $signed({8'b0, feature[i][k]});
+            end
+            if(result_sim[i*P+j] != result_std) begin
+                error_flag = 1'b1;
+            end
+        end
+      end
+
+      if(error_flag) begin
+        $display("[%d]: error", test_cnt);
+        $finish;
+      end
+      else begin
+        $display("[%d]: correct", test_cnt);
+      end
+      arm_work = 1'b1;
+      finish_flag = 1'b1;
+  end
+end
+
+// WRITE_FM
 initial begin
     while(1) begin
+        FM_reg_valid = 1'b0;
+        FM_reg0 = 'b0;
+        FM_reg1 = 'b0;
+        FM_reg2 = 'b0;
+        FM_reg3 = 'b0;
 
-        // 等待写入Feature
-        wait(c_state==WRITE_FM);
+        // 等待状态
+        wait(c_state == WRITE_FM);
 
         for(j = 0; j < N; j = j + 1) begin
-            for(i = 0; i < M; i =i + 4) begin
-                // 每个时钟写入一个数据
+            for(i = 0; i < M; i = i + 4) begin
                 @(posedge arm_clk)
-
                 FM_reg_valid = 1'b1;
-
-                // 随机生成feature
                 {FM_reg0, FM_reg1, FM_reg2, FM_reg3} = $random;
+
+                // 处理边界情况
                 if(i + 1 >= M) begin
-                    FM_reg1 = 0;
-                    FM_reg2 = 0;
-                    FM_reg3 = 0;
-                end
+                  FM_reg1 = 0;
+                  FM_reg2 = 0;
+                  FM_reg3 = 0;
+                end 
                 else if(i + 2 >= M) begin
                     FM_reg2 = 0;
                     FM_reg3 = 0;
-                end
-                else if(i + 3 >= M) begin
+                end 
+                else if(i + 2 >= M) begin
                     FM_reg3 = 0;
                 end
 
-                feature[i][j] = FM_reg0;
-                feature[i + 1][j] = FM_reg1;
-                feature[i + 2][j] = FM_reg2;
-                feature[i + 3][j] = FM_reg3;
+                // 记录生成值
+                feature[i  ][j] = FM_reg0;
+                feature[i+1][j] = FM_reg1;
+                feature[i+2][j] = FM_reg2;
+                feature[i+3][j] = FM_reg3;
             end
         end
     end
 end
 
-// 随机进行实验
+// WRITE_WM
 initial begin
-    while (1) begin
-        // 等待写入Weight
-        wait(c_state==WRITE_WM);
+    while(1) begin
+        WM_reg_valid = 1'b0;
+        WM_reg0 = 'b0;
+        WM_reg1 = 'b0;
+        WM_reg2 = 'b0;
+        WM_reg3 = 'b0;
 
-        // 写入Featue数据
-        for(i = 0; i < N; i = i + 1) begin
+        wait(c_state == WRITE_WM);
+
+        for(i = 0; i < N ; i = i + 1) begin 
             for(j = 0; j < P; j = j + 4) begin
-                // 每个时钟写入一个数据
                 @(posedge arm_clk)
-
                 WM_reg_valid = 1'b1;
                 {WM_reg0, WM_reg1, WM_reg2, WM_reg3} = $random;
 
@@ -319,86 +376,20 @@ initial begin
                     WM_reg1 = 0;
                     WM_reg2 = 0;
                     WM_reg3 = 0;
-                end
-                else if(j + 2 >= M) begin
+                end else if(j + 2 >= M) begin
                     WM_reg2 = 0;
                     WM_reg3 = 0;
-                end
-                else if(j + 3 >= M) begin
+                end else if(j + 2 >= M) begin
                     WM_reg3 = 0;
                 end
-                weight[i][j] = WM_reg0;
+
+                // 记录生成值
+                weight[i][j  ] = WM_reg0;
                 weight[i][j+1] = WM_reg1;
                 weight[i][j+2] = WM_reg2;
                 weight[i][j+3] = WM_reg3;
             end
         end
-        r = 0;
-    end
-end
-
-reg signed [0:31] cur_res_A;
-reg signed [0:31] cur_res_B;
-
-// 随机生成矩阵乘法参数M,N,P
-initial begin
-    count = 0;
-    while (1) begin
-        // 等待状态
-        wait(c_state==IDLE);
-        // 设置参数
-        M = {$random} % 10 + 1;
-        N = {$random} % 10 + 1;
-        P = {$random} % 10 + 1;
-        $display("%d: set para: M = %d, N = %d, P = %d", count, M, N, P);
-        count = count + 1;
-
-        FM_reg_valid = 1'b0;
-        FM_reg0 = 'b0;
-        FM_reg1 = 'b0;
-        FM_reg2 = 'b0;
-        FM_reg3 = 'b0;
-
-        WM_reg_valid = 1'b0;
-        WM_reg0 = 'b0;
-        WM_reg1 = 'b0;
-        WM_reg2 = 'b0;
-        WM_reg3 = 'b0;
-
-        finish_sig = 1'b0;
-
-        wait(c_state==FINISH);
-
-        // 等待运行结束，此时计算std
-        wait(r == M * P)
-
-        arm_work = 1'b0;
-
-        flag = 1'b1;
-        // 计算矩阵乘法结果
-        for (i = 0; i < M && flag; i = i + 1) begin
-            for (j = 0; j < P && flag; j = j + 1) begin
-                // 计算标准结果
-                std_result = 'b0;
-                for (k = 0; k < N; k = k + 1) begin
-                    std_result = std_result + $signed({8'b0,feature[i][k]}) * $signed(weight[k][j]);
-                end
-                // 比较结果
-                cur_res_A = std_result;
-                cur_res_B = sim_result[i * P + j];
-                if (std_result != sim_result[i * P + j]) begin
-                    $display("Error: %d  !=  %d", std_result, sim_result[i * P + j]);
-                    flag = 1'b0;
-                end
-            end
-        end
-
-        if (flag) begin
-            $display("Compute Success!");
-        end
-
-        arm_work = 1'b1;
-        finish_sig = 1;
     end
 end
 
@@ -409,9 +400,11 @@ initial begin
     rst = 1'b1;
     arst_n = 1'b0;
     arm_work = 1'b0;
+
     # 100
     rst = 1'b0;
     arst_n = 1'b1;
+
     # 100
     arm_work = 1'b1;
 end
@@ -576,10 +569,12 @@ always @(posedge arm_clk or posedge rst) begin
   end
 end
 
+// 记录计算结果
 always @(posedge arm_clk) begin
   if (c_state_f3 == READ_OUT) begin
-    sim_result[r] = arm_BRAM_OUT_douta;
-		r = r + 1;
+    result_sim[result_cnt] = arm_BRAM_OUT_douta;
+    //$display("[%d]: %d", result_cnt, result_sim[result_cnt]);
+    result_cnt = result_cnt + 1;
   end
 end
 
@@ -600,16 +595,16 @@ tb_ram BRAM_FM32 (
 
 // 存储Weight的BRAM
 tb_ram BRAM_WM32 (
-.clka(arm_clk),    // input wire clka
-.wea(arm_BRAM_WM32_wea),      // input wire [3 : 0] wea
-.addra(arm_BRAM_WM32_addra[15:0]),  // input wire [15 : 0] addra
-.dina(arm_BRAM_WM32_dina),    // input wire [31 : 0] dina
-.douta(arm_BRAM_WM32_douta),  // output wire [31 : 0] douta
-.clkb(BRAM_WM32_clk),    // input wire clkb
-.web(BRAM_WM32_we),      // input wire [3 : 0] web
-.addrb(BRAM_WM32_addr_change[15:0]),  // input wire [15 : 0] addrb
-.dinb(BRAM_WM32_wrdata),    // input wire [31 : 0] dinb
-.doutb(BRAM_WM32_rddata)  // output wire [31 : 0] doutb
+  .clka(arm_clk),    // input wire clka
+  .wea(arm_BRAM_WM32_wea),      // input wire [3 : 0] wea
+  .addra(arm_BRAM_WM32_addra[15:0]),  // input wire [15 : 0] addra
+  .dina(arm_BRAM_WM32_dina),    // input wire [31 : 0] dina
+  .douta(arm_BRAM_WM32_douta),  // output wire [31 : 0] douta
+  .clkb(BRAM_WM32_clk),    // input wire clkb
+  .web(BRAM_WM32_we),      // input wire [3 : 0] web
+  .addrb(BRAM_WM32_addr_change[15:0]),  // input wire [15 : 0] addrb
+  .dinb(BRAM_WM32_wrdata),    // input wire [31 : 0] dinb
+  .doutb(BRAM_WM32_rddata)  // output wire [31 : 0] doutb
 );
 
 // 控制状态的BRAM
