@@ -257,6 +257,7 @@ reg [0:7] weight [0:200][0:200];
 reg signed [0:31] std_result;
 reg [0:31] sim_result [0:40000];
 reg flag;
+reg [31:0] count;
 
 integer i, j, k, r;
 
@@ -323,7 +324,7 @@ initial begin
                     WM_reg2 = 0;
                     WM_reg3 = 0;
                 end
-                else if(j + 2 >= M) begin
+                else if(j + 3 >= M) begin
                     WM_reg3 = 0;
                 end
                 weight[i][j] = WM_reg0;
@@ -341,6 +342,7 @@ reg signed [0:31] cur_res_B;
 
 // 随机生成矩阵乘法参数M,N,P
 initial begin
+    count = 0;
     while (1) begin
         // 等待状态
         wait(c_state==IDLE);
@@ -348,7 +350,8 @@ initial begin
         M = {$random} % 10 + 1;
         N = {$random} % 10 + 1;
         P = {$random} % 10 + 1;
-        $display("set para: M = %d, N = %d, P = %d", M, N, P);
+        $display("%d: set para: M = %d, N = %d, P = %d", count, M, N, P);
+        count = count + 1;
 
         FM_reg_valid = 1'b0;
         FM_reg0 = 'b0;
@@ -575,23 +578,24 @@ end
 
 always @(posedge arm_clk) begin
   if (c_state_f3 == READ_OUT) begin
-      $fwrite(fp_w,"%d\n",$signed(arm_BRAM_OUT_douta));
+    sim_result[r] = arm_BRAM_OUT_douta;
+		r = r + 1;
   end
 end
 
 // 基于IP实例化BRAM
 // 存储Feature的BRAM
 tb_ram BRAM_FM32 (
-.clka(arm_clk),    // input wire clka
-.wea(arm_BRAM_FM32_wea),      // input wire [3 : 0] wea
-.addra(arm_BRAM_FM32_addra[15:0]),  // input wire [15 : 0] addra
-.dina(arm_BRAM_FM32_dina),    // input wire [31 : 0] dina
-.douta(arm_BRAM_FM32_douta),  // output wire [31 : 0] douta
-.clkb(BRAM_FM32_clk),    // input wire clkb
-.web(BRAM_FM32_we),      // input wire [3 : 0] web
-.addrb(BRAM_FM32_addr_change[15:0]),  // input wire [15 : 0] addrb
-.dinb(BRAM_FM32_wrdata),    // input wire [31 : 0] dinb
-.doutb(BRAM_FM32_rddata)  // output wire [31 : 0] doutb
+  .clka(arm_clk),    // input wire clka
+  .wea(arm_BRAM_FM32_wea),      // input wire [3 : 0] wea
+  .addra(arm_BRAM_FM32_addra[15:0]),  // input wire [15 : 0] addra
+  .dina(arm_BRAM_FM32_dina),    // input wire [31 : 0] dina
+  .douta(arm_BRAM_FM32_douta),  // output wire [31 : 0] douta
+  .clkb(BRAM_FM32_clk),    // input wire clkb
+  .web(BRAM_FM32_we),      // input wire [3 : 0] web
+  .addrb(BRAM_FM32_addr_change[15:0]),  // input wire [15 : 0] addrb
+  .dinb(BRAM_FM32_wrdata),    // input wire [31 : 0] dinb
+  .doutb(BRAM_FM32_rddata)  // output wire [31 : 0] doutb
 );
 
 // 存储Weight的BRAM
@@ -610,29 +614,29 @@ tb_ram BRAM_WM32 (
 
 // 控制状态的BRAM
 tb_ram BRAM_CTRL (
-.clka(arm_clk),    // input wire clka
-.wea(arm_BRAM_CTRL_wea),      // input wire [3 : 0] wea
-.addra(arm_BRAM_CTRL_addra[15:0]),  // input wire [15 : 0] addra
-.dina(arm_BRAM_CTRL_dina),    // input wire [31 : 0] dina
-.douta(arm_BRAM_CTRL_douta),  // output wire [31 : 0] douta
-.clkb(BRAM_CTRL_clk),    // input wire clkb
-.web(BRAM_CTRL_we),      // input wire [3 : 0] web
-.addrb(BRAM_CTRL_addr_change[15:0]),  // input wire [15 : 0] addrb
-.dinb(BRAM_CTRL_wrdata),    // input wire [31 : 0] dinb
-.doutb(BRAM_CTRL_rddata)  // output wire [31 : 0] doutb
+  .clka(arm_clk),    // input wire clka
+  .wea(arm_BRAM_CTRL_wea),      // input wire [3 : 0] wea
+  .addra(arm_BRAM_CTRL_addra[15:0]),  // input wire [15 : 0] addra
+  .dina(arm_BRAM_CTRL_dina),    // input wire [31 : 0] dina
+  .douta(arm_BRAM_CTRL_douta),  // output wire [31 : 0] douta
+  .clkb(BRAM_CTRL_clk),    // input wire clkb
+  .web(BRAM_CTRL_we),      // input wire [3 : 0] web
+  .addrb(BRAM_CTRL_addr_change[15:0]),  // input wire [15 : 0] addrb
+  .dinb(BRAM_CTRL_wrdata),    // input wire [31 : 0] dinb
+  .doutb(BRAM_CTRL_rddata)  // output wire [31 : 0] doutb
 );
 
 tb_ram BRAM_OUT (
-.clka(arm_clk),    // input wire clka
-.wea(arm_BRAM_OUT_wea),      // input wire [3 : 0] wea
-.addra(arm_BRAM_OUT_addra[15:0]),  // input wire [15 : 0] addra
-.dina(arm_BRAM_OUT_dina),    // input wire [31 : 0] dina
-.douta(arm_BRAM_OUT_douta),  // output wire [31 : 0] douta
-.clkb(BRAM_OUT_clk),    // input wire clkb
-.web(BRAM_OUT_we),      // input wire [3 : 0] web
-.addrb(BRAM_OUT_addr_change[15:0]),  // input wire [15 : 0] addrb
-.dinb(BRAM_OUT_wrdata),    // input wire [31 : 0] dinb
-.doutb(BRAM_OUT_rddata)  // output wire [31 : 0] doutb
+  .clka(arm_clk),    // input wire clka
+  .wea(arm_BRAM_OUT_wea),      // input wire [3 : 0] wea
+  .addra(arm_BRAM_OUT_addra[15:0]),  // input wire [15 : 0] addra
+  .dina(arm_BRAM_OUT_dina),    // input wire [31 : 0] dina
+  .douta(arm_BRAM_OUT_douta),  // output wire [31 : 0] douta
+  .clkb(BRAM_OUT_clk),    // input wire clkb
+  .web(BRAM_OUT_we),      // input wire [3 : 0] web
+  .addrb(BRAM_OUT_addr_change[15:0]),  // input wire [15 : 0] addrb
+  .dinb(BRAM_OUT_wrdata),    // input wire [31 : 0] dinb
+  .doutb(BRAM_OUT_rddata)  // output wire [31 : 0] doutb
 );
 
 MM_TOP U_MM_TOP(
