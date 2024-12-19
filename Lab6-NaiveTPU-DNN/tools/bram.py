@@ -155,12 +155,12 @@ if __name__ == '__main__':
     bram.write(data_wirte, 'input')
     data_read = bram.read(data_wirte.size, 'input', dtype=np.int8).reshape(8,4)
 
-    print('write data')
-    print(data_wirte)
-    print()
-    print('read data')
-    print(data_read)
-    print()
+    # print('write data')
+    # print(data_wirte)
+    # print()
+    # print('read data')
+    # print(data_read)
+    # print()
 
     # 向ir块中写入flag信息
     flag_00 = b"\x00\x00\x00\x00"
@@ -174,8 +174,8 @@ if __name__ == '__main__':
     # bram.write(flag_01, 'ir', offset=0x0)
     flag_01_read = bram.read(1, 'ir', offset='flag', dtype=np.int8)
     
-    print('write flag_00:', flag_00)
-    print('read flag_00:', flag_00_read)
-    print()
-    print('write flag_01:', flag_01)
-    print('read flag_01:', flag_01_read)
+    # print('write flag_00:', flag_00)
+    # print('read flag_00:', flag_00_read)
+    # print()
+    # print('write flag_01:', flag_01)
+    # print('read flag_01:', flag_01_read)

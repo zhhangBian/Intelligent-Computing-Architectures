@@ -25,8 +25,8 @@ x_test = x_test.round().astype(np.int8)
 x_test = x_test[..., np.newaxis]
 
 ##################### 创建实例 ##################### 
-# net = lenet.LeNetNumpy('np')
-net = lenet.LeNetNumpy('Matmul')
+net = lenet.LeNetNumpy('np')
+# net = lenet.LeNetNumpy('Matmul')
 timer = Timer()
 
 ##################### 测试模型 ##################### 

@@ -9,6 +9,15 @@ class LeNetNumpy(object):
             输入：
                 matmul: np, Matmul
         '''
+        # 矩阵乘法方式定义
+        if matmul == 'np':
+            self.matmul = np.matmul  # 矩阵乘法方式定义
+        elif matmul == 'Matmul':
+            self.matmul = Matmul()  # 矩阵乘法方式定义
+        else:
+            raise Exception('matmul type does not exist')
+
+        # 获取神经网络参数，包括各层的weight和bias
         self.weight_dir = os.path.join(os.getcwd(), 'checkpoint/weight_npy/lenet')
         self.w1 = np.load(os.path.join(self.weight_dir, 'le_net_sequential_conv2d_Conv2D.npy'))
         self.b1 = np.load(os.path.join(self.weight_dir, 'le_net_sequential_conv2d_BiasAdd;le_net_sequential_conv2d_Conv2D;conv2d_bias.npy'))
@@ -51,21 +60,80 @@ class LeNetNumpy(object):
             zero_point={'input': -128, 'weight': 0, 'output': -128}
         )
 
-        if matmul == 'np':
-            self.matmul = np.matmul  # 矩阵乘法方式定义
-        elif matmul == 'Matmul':
-            self.matmul = Matmul()  # 矩阵乘法方式定义
-        else:
-            raise Exception('matmul type does not exist')
-
         # [TODO] 实现网络各个层的定义
         # 例：
-        self.maxpooling = Pooling(ksize=(2,2), method='max')
+        # self.maxpooling = Pooling(ksize=(2,2), method='max')
+
+        # (6, 5, 5, 1) (6,)
+        self.conv1 = Conv2D(
+            self.w1,
+            self.b1,
+            self.conv1_quantization_params,
+            pad="SAME",
+            stride=(1,1),
+            matmul=self.matmul
+        )
+
+        self.pool1 = Pooling(
+            ksize=(2,2),
+            method='max'
+        )
+
+        # (16, 5, 5, 6) (16,)
+        self.conv2 = Conv2D(
+            self.w2,
+            self.b2,
+            self.conv2_quantization_params,
+            pad="VALID",
+            stride=(1,1),
+            matmul=self.matmul
+        )
+
+        self.pool2 = Pooling(
+            ksize=(2,2),
+            method='max'
+        )
+
+        self.flatten = Flatten()
+
+        # (120, 400) (120,)
+        self.dense3 = Dense(
+            self.w3,
+            self.b3,
+            self.dense3_quantization_params,
+            matmul=self.matmul
+        )
+
+        # (84, 120) (84,)
+        self.dense4 = Dense(
+            self.w4,
+            self.b4,
+            self.dense4_quantization_params,
+            matmul=self.matmul
+        )
+
+        # (10, 84) (10,)
+        self.dense5 = Dense(
+            self.w5,
+            self.b5,
+            self.dense5_quantization_params,
+            matmul=self.matmul
+        )
 
     def forward(self, x):
         # [TODO] 使用定义后的网络层算子实现网络前向传播
         # 例：
-        output = self.maxpooling(x)
+        # output = self.maxpooling(x)
+
+        x = self.conv1(x)
+        x = self.pool1(x)
+        x = self.conv2(x)
+        x = self.pool2(x)
+        x = self.flatten(x)
+        x = self.dense3(x)
+        x = self.dense4(x)
+        output = self.dense5(x)
+
         return output
 
     def __call__(self, x):

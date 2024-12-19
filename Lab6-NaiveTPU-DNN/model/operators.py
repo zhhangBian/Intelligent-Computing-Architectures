@@ -1,13 +1,15 @@
 # -*-coding: utf-8-*-
 import numpy as np
 np.set_printoptions(threshold=np.inf)
-from multiprocessing import Process 
+from multiprocessing import Process
 import os, sys
 sys.path.append(os.path.abspath('.'))   # 添加路径信息否则无法引用到tools
 
 from tools import *
 
-# [TODO] 替换此处代码为Lab4、Lab5中同学们自己实现的类
+# 此文件中包含神经网络推理算子的具体实现
+
+# 矩阵乘算子
 class Matmul(object):
     '''矩阵乘法
         Args: uint8, (m, n)
@@ -16,52 +18,104 @@ class Matmul(object):
 
     def __init__(self):
         self.systolic_size = 4 # 脉动阵列大小
-        pass
+        self.bram = BRAM()
 
     def __call__(self, input: np.uint8, weight: np.int8):
+        m, n = input.shape
+        n, p = weight.shape
+        # 传送数据
         self.send_data(input, 'input')
         self.send_data(weight, 'weight')
-        output_arr = self.recv_output((None, None))
+        # 传送指令
+        self.send_instr(m, p, n)
+        # 等待计算完成
+        self.send_flag()
+        self.wait_flag()
+        # 接受数据
+        output_arr = self.recv_output((m, p))
         return output_arr
 
     def send_data(self, data, block_name, offset='default'):
-        '''写入input或weight至bram
-
+        '''
+        写入input或weight至bram
             假设两个矩阵分别是(m,n) x (n,p), m和p的维度需要补全至self.systolic_size的倍数，
-            并且写入时需要按照补零的方向写入，例如：  
-                1. 矩阵(m, n)是m补零，则m个m个写入BRAM中。（行方向补零，列方向写入）  
+            并且写入时需要按照补零的方向写入，例如：
+                1. 矩阵(m, n)是m补零，则m个m个写入BRAM中。（行方向补零，列方向写入）
                 2. 矩阵(n, p)是p补零，则p个p个写入BRAM中。（列方向补零，行方向写入）
-            
             Args:
                 data: 要写入的数据
                 block_name: input, weight
                 offset: 偏移地址名称，默认为default
         '''
-        pass
+        # 对数据进行对齐处理
+        if block_name == 'input':
+            # 转置：写入时需要按照补零的方向写入
+            data = data.T
+        data = self._zero_padding(data)
+        self.bram.write(data, block_name=block_name, offset=offset)
 
     def send_instr(self, m, p, n):
         '''构建并发送指令
-
             两个矩阵shape分别为(m,n) x (n,p)
         '''
-        pass
+        # 63:48       47:32             31:16       15：0
+        # null        inputN/weightN    weightP     inputM
+        ir = 0
+        # inputN/weightN
+        ir <<= 16
+        ir += n
+        # weightP
+        ir <<= 16
+        ir += p
+        # inputM
+        ir <<= 16
+        ir += m
+        # 使用小端序
+        instr = ir.to_bytes(8, byteorder='little', signed=False)
+        # print(f"[instr]:\t{instr}")
+        self.bram.write(instr, block_name='ir', offset='instr')
 
+    # 写入flag信息
     def send_flag(self):
         '''发送flag=1信号'''
-        pass
-        
+        # 左侧是地址地位
+        flag = b"\x01\x00\x00\x00"
+        self.bram.write(flag, 'ir', offset='flag')
+
+    # 读取flag信息
+    def read_flag(self):
+        '''读取flag信号'''
+        flag = self.bram.read(1, block_name='ir', offset='flag')[0]
+        return flag
+
+    def wait_flag(self):
+        '''等待flag=1信号'''
+        value = 1
+        while value != 0:
+            value = self.read_flag()
+
     def recv_output(self, output_shape: tuple):
         '''接收结果
-
             Args:
                 output_shape: 输出的shape，类型tuple
-
             Return:
                 output_arr: shape为output_shape的np.ndarray
         '''
-        output_arr = None
+        row, col = output_shape
+        output_arr = self.bram.read(len=row * col * 4,
+                                    block_name='output',
+                                    dtype=np.int32).reshape(row, col)
+        # print(f"output is:\n {output_arr}")
         return output_arr
 
+    def _zero_padding(self, data):
+        if data.shape[1] % self.systolic_size != 0:
+            row = data.shape[0]
+            col = self.systolic_size - data.shape[1] % self.systolic_size
+            data = np.hstack((data, np.zeros((row, col), dtype=data.dtype)))
+        return data
+
+# ReLU激活函数
 class ReLU(object):
     '''relu激活函数'''
     def __call__(self, x):
@@ -70,11 +124,19 @@ class ReLU(object):
     def forward(self, x):
         return np.maximum(0, x, dtype=x.dtype)
 
+# 全连接层
+# 使用方法为:
+# dense = Dense(weights, bias, quantization_parameters, matmul=matmul)
+# output = dense(x)
 class Dense(object):
     '''全连接层
-        输入: int8 
+        输入: int8
         输出: int8
     '''
+    # weights: 权重
+    # bias: 偏置
+    # quantization_parameters: 量化参数
+    # matmul: 矩阵乘法算子，np.matmul / Matmul()
     def __init__(self, w, b, quantization_parameters, matmul=np.matmul):
         self.w = w
         self.b = b
@@ -99,9 +161,13 @@ class Dense(object):
         output = output + self.zero_point['output']
         return output
 
+# 卷积层
+# 使用方法为:
+# conv2d = Conv2D(weights, bias, quantization_parameters, pad='VALID', stride=(1,1), matmul=matmul)
+# output = conv2d(x)
 class Conv2D(object):
     '''卷积层
-        输入: int8 
+        输入: int8
         输出: int8
     '''
     def __init__(self, w, b, quantization_parameters, pad='SAME', stride=(1,1), matmul=np.matmul):
@@ -228,7 +294,7 @@ class Conv2D(object):
             Args:
                 x: [N, H, W, C]
                 w: [KH, KW, KC, KN]
-                pad: [PH, PW] 
+                pad: [PH, PW]
                 stride: [SH, SW]
 
             Return:
@@ -260,11 +326,18 @@ class Conv2D(object):
         output = np.clip(output, -128, 127)
         return output
 
+# 池化层
+# 使用方法为:
+# maxpooling = Pooling(ksize=(2,2), method='max', pad=False)
+# output = maxpooling(x)
 class Pooling(object):
     '''池化层，可使用最大池化方式或者平均池化方式
-        输入: int8 
+        输入: int8
         输出: int8
     '''
+    # ksize:滤波器大小
+    # method:池化方法，max/min
+    # pad:是否进行填充
     def __init__(self, ksize, method, pad=False):
         '''
         Args:
@@ -320,6 +393,8 @@ class Pooling(object):
         # result = np.clip(result, -128, 127)
         return result.transpose(2,0,1,3)
 
+
+# 展平层
 class Flatten(object):
     '''将矩阵展平'''
     def __call__(self, x):
@@ -328,6 +403,8 @@ class Flatten(object):
     def forward(self, x):
         return x.reshape(x.shape[0], -1)
 
+
+# 量化参数
 class Quantization(object):
     '''层级量化参数存储和处理'''
     def __init__(self, scale, zero_point):
@@ -356,7 +433,7 @@ class Quantization(object):
     def __val2ndarray(self, x):
         for key in x:
             x[key] = np.array(x[key])
-    
+
     def get_ori_scale(self):
         return self.scale
 

@@ -2,7 +2,7 @@
 import numpy as np
 import os, sys
 
-from model import lenet
+from model import mlp
 from tools import load_mnist, Logger, Timer
 
 Logger('INFO')  # 初始化参数
@@ -21,12 +21,13 @@ x_test = x_test / 255.
 x_test = x_test / input_scale + input_zero_point
 x_test = x_test.round().astype(np.int8)
 
-# 加入单通道的维度
-x_test = x_test[..., np.newaxis]
+# 由于输入为784，因此需要reshape输入数据，这里仅需要测试集即可
+# x_train = x_train.reshape(x_train.shape[0], -1)
+x_test = x_test.reshape(x_test.shape[0], -1)
 
 ##################### 创建实例 ##################### 
-# net = lenet.LeNetNumpy('np')
-net = lenet.LeNetNumpy('Matmul')
+net = mlp.MLPNumpy('np')
+# net = mlp.MLPNumpy('Matmul')
 timer = Timer()
 
 ##################### 测试模型 ##################### 
@@ -35,13 +36,11 @@ samples_num = 20 #len(x_test)
 for i in range(samples_num):
     logger.info("{}/{}".format(i, samples_num))
 
-    # 获取测试集中的图片和标签
     image = x_test[i][np.newaxis, :]
     label = y_test[i]   # 这里的label就是一个数字，如7，表示这张图片是7
 
     # 推理并记录时间
     timer.start()
-    # 执行推理
     prediction = net(image)
     timer.end()
     logger.info("Inference time: {}".format(timer.current_time()))
