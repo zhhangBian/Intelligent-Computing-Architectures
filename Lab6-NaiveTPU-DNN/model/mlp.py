@@ -32,14 +32,6 @@ class MLPNumpy(object):
         else:
             raise Exception('matmul type does not exist')
 
-        # [TODO] 实现网络各个层的定义
-        # 例：
-        # self.dense = Dense(
-        #     self.w1,
-        #     self.b1,
-        #     self.dense1_quantization_params,
-        #     matmul=self.matmul
-        # )
         
         self.dense1 = Dense(
             self.w1,
@@ -55,11 +47,7 @@ class MLPNumpy(object):
             matmul=self.matmul
         )
 
-    def forward(self, x):
-        # [TODO] 使用定义后的网络层算子实现网络前向传播
-        # 例：
-        # output = self.dense(x)
-        
+    def forward(self, x):        
         x = self.dense1(x)
         output = self.dense2(x)
         
