@@ -9,6 +9,56 @@ from tools import *
 
 # 此文件中包含神经网络推理算子的具体实现
 
+# 量化参数
+# 用于进行模型量化
+class Quantization(object):
+    '''层级量化参数存储和处理'''
+    def __init__(self, scale, zero_point):
+        '''
+            Args:
+                scale: dict, 包含input, weight, output
+                zero_point: dict, 包含input, weight, output
+        '''
+        # 检查scale和zero_point是否符合要求
+        # 检查数据类型为dict且包含input, weight, output
+        self._check_dict(scale)
+        self._check_dict(zero_point)
+
+        # 赋值
+        # 量化尺度
+        self.scale = scale
+        # 量化零点
+        self.zero_point = zero_point
+
+        # 将字典值转换为ndarray
+        self._dict2nparray(self.scale)
+        self._dict2nparray(self.zero_point)
+
+    def _check_dict(self, x):
+        assert type(x) is dict
+        if ('input' in x) and ('weight' in x) and ('output' in x) == False:
+            raise KeyError('scale or zero_point must have input, weight and output items')
+
+    def _dict2nparray(self, x):
+        for key in x:
+            x[key] = np.array(x[key])
+
+    # 获取原始量化尺度
+    def get_ori_scale(self):
+        return self.scale
+
+    # 获取量化尺度
+    def get_scale(self):
+        '''
+            Return:
+                input_scale * weight_scale / output_scale
+        '''
+        return self.scale['input'] * self.scale['weight'] / self.scale['output']
+
+    # 获取量化零点
+    def get_zero_point(self):
+        return self.zero_point
+
 # 矩阵乘算子
 class Matmul(object):
     '''矩阵乘法
@@ -117,10 +167,11 @@ class Matmul(object):
 
 # ReLU激活函数
 class ReLU(object):
-    '''relu激活函数'''
+    '''ReLU激活函数'''
     def __call__(self, x):
         return self.forward(x)
 
+    # ReLU：大于0保留，小于等于0的部分置0
     def forward(self, x):
         return np.maximum(0, x, dtype=x.dtype)
 
@@ -137,11 +188,15 @@ class Dense(object):
     # bias: 偏置
     # quantization_parameters: 量化参数
     # matmul: 矩阵乘法算子，np.matmul / Matmul()
-    def __init__(self, w, b, quantization_parameters, matmul=np.matmul):
+    def __init__(self, w, b, quantization_parameters: Quantization, matmul=np.matmul):
         self.w = w
         self.b = b
+        # 量化参数--------------------------------
+        # 量化尺度
         self.scale = quantization_parameters.get_scale()
+        # 量化零点
         self.zero_point = quantization_parameters.get_zero_point()
+        # 矩阵乘法算子：可选为np或matmul
         self.matmul = matmul
 
     def __call__(self, x):
@@ -150,14 +205,19 @@ class Dense(object):
         return output
 
     def forward(self, x):
+        # 权重数据量化
         w = self.w - self.zero_point['weight']
+        # 输入数据量化
         input_data = x - self.zero_point['input']
-
+        # 矩阵乘法算子为Matmul时，将输入数据转换为uint8
         if isinstance(self.matmul, Matmul):
             input_data = input_data.astype(np.uint8)
-        output = self.matmul(input_data, w.T) + self.b
 
+        # 矩阵乘法
+        output = self.matmul(input_data, w.T) + self.b
+        # 量化输出
         output = self.scale * output
+        # 加上量化零点
         output = output + self.zero_point['output']
         return output
 
@@ -173,56 +233,68 @@ class Conv2D(object):
     def __init__(self, w, b, quantization_parameters, pad='SAME', stride=(1,1), matmul=np.matmul):
         self.w = w
         self.b = b
+        # 量化参数--------------------------------
+        # 量化尺度
         self.scale = quantization_parameters.get_scale()
+        # 量化零点
         self.zero_point = quantization_parameters.get_zero_point()
+
+        # 卷积参数--------------------------------
+        # 填充方式
         self.pad=pad
+        # 卷积步长
         self.stride=stride
+        # 矩阵乘法算子
         self.matmul = matmul
 
     def __call__(self, x):
+        # 输入数据量化
         input_data = x.astype(np.int32)
+        # 输出数据量化
         output = np.clip(self.forward(input_data), -128, 127).astype(np.int8)
         return output
 
-    def calc_size(self, h, kh, pad, sh):
-        """Calculate output image size on one dimension.
-
+    # 计算卷积输出大小
+    def _calc_size(self, h, kernel_size, pad, stride):
+        """计算卷积输出大小
         Args:
-            h: input image size.
-            kh: kernel size.
-            pad: padding strategy.
-            sh: stride.
-
+            h: input image size.输入图像大小
+            kernel_size: kernel size.卷积核大小
+            pad: padding strategy.填充策略
+            stride: stride.移动步长
         Returns:
             s: output size.
         """
 
+        # valid策略为不填充
         if pad == 'VALID':
-            return np.ceil((h - kh + 1) / sh)
+            return np.ceil((h - kernel_size + 1) / stride)
+        # same策略为填充至输出大小为输入大小的整数倍
         elif pad == 'SAME':
-            return np.ceil(h / sh)
+            return np.ceil(h / stride)
+        # 手动填充
         else:
-            return int(np.ceil((h - kh + pad + 1) / sh))
+            return int(np.ceil((h - kernel_size + pad + 1) / stride))
 
-    def calc_pad(self, pad, in_siz, out_siz, stride, ksize):
-        """Calculate padding width.
-
+    def _calc_pad(self, pad, in_siz, out_siz, stride, ksize):
+        """计算卷积填充部分的大小
         Args:
             pad: padding method, "SAME", "VALID", or manually speicified.
             ksize: kernel size [I, J].
-
         Returns:
-            pad_: Actual padding width.
+            pad_: 实际填充大小
         """
-        if pad == 'SAME':
-            return max((out_siz - 1) * stride + ksize - in_siz, 0)
-        elif pad == 'VALID':
+        # valid策略为不填充
+        if pad == 'VALID':
             return 0
+        # same策略为填充至输出大小为输入大小的整数倍
+        elif pad == 'SAME':
+            return max((out_siz - 1) * stride + ksize - in_siz, 0)
         else:
             return pad
 
-    def array_offset(self, x):
-        """Get offset of array data from base data in bytes."""
+    # 计算数组偏移量，按照字节byte进行计算
+    def _array_offset(self, x):
         if x.base is None:
             return 0
 
@@ -230,99 +302,147 @@ class Conv2D(object):
         start = x.__array_interface__['data'][0]
         return start - base_start
 
-    def extract_sliding_windows(self, x, ksize, pad, stride, floor_first=True):
+    # 提取滑动窗口
+    def _extract_sliding_windows(self, data, ksize, pad, stride, floor_first=True):
         """Converts a tensor to sliding windows.
-
         Args:
             x: [N, H, W, C]
             k: [KH, KW]
             pad: [PH, PW]
             stride: [SH, SW]
-
         Returns:
             y: [N, (H-KH+PH+1)/SH, (W-KW+PW+1)/SW, KH * KW, C]
         """
-        n = x.shape[0]
-        h = x.shape[1]
-        w = x.shape[2]
-        c = x.shape[3]
+        # batch size
+        n = data.shape[0]
+        # 输入高度
+        h = data.shape[1]
+        # 输入宽度
+        w = data.shape[2]
+        # 通道数
+        c = data.shape[3]
+        # 卷积核高度
         kh = ksize[0]
+        # 卷积核宽度
         kw = ksize[1]
+        # 垂直步长
         sh = stride[0]
+        # 水平步长
         sw = stride[1]
 
-        h2 = int(self.calc_size(h, kh, pad, sh))
-        w2 = int(self.calc_size(w, kw, pad, sw))
-        ph = int(self.calc_pad(pad, h, h2, sh, kh))
-        pw = int(self.calc_pad(pad, w, w2, sw, kw))
+        # 计算输出特征图大小
+        output_height = int(self._calc_size(h, kh, pad, sh))
+        output_width  = int(self._calc_size(w, kw, pad, sw))
+        # 计算卷积填充大小
+        pad_height = int(self._calc_pad(pad, h, output_height, sh, kh))
+        pad_width  = int(self._calc_pad(pad, w, output_width, sw, kw))
 
-        ph0 = int(np.floor(ph / 2))
-        ph1 = int(np.ceil(ph / 2))
-        pw0 = int(np.floor(pw / 2))
-        pw1 = int(np.ceil(pw / 2))
+        # 计算卷积填充大小
+        ph0 = int(np.floor(pad_height / 2))
+        ph1 = int(np.ceil (pad_height / 2))
+        pw0 = int(np.floor(pad_width  / 2))
+        pw1 = int(np.ceil (pad_width  / 2))
 
+        # 计算卷积填充大小
+        # 根据floor_first决定填充顺序：floor_first是指先填充0，再填充1
         if floor_first:
-            pph = (ph0, ph1)
-            ppw = (pw0, pw1)
+            pph, ppw = (ph0, ph1), (pw0, pw1)
         else:
-            pph = (ph1, ph0)
-            ppw = (pw1, pw0)
-        x = np.pad(
-            x, ((0, 0), pph, ppw, (0, 0)),
-            mode='constant',
-            constant_values=(0.0, ))
+            pph, ppw = (ph1, ph0), (pw1, pw0)
+
+        # 填充数据
+        # 对输入数据进行填充
+        data = np.pad(
+            data,     # 输入数组
+            (
+              (0, 0), # batch维度不填充
+              pph,    # 高度维度填充
+              ppw,    # 宽度维度填充
+              (0, 0)  # 通道维度不填充
+            ),
+            mode='constant',           # 填充模式：常数
+            constant_values=(0.0, )    # 填充值：0
+        )
 
         # The following code extracts window without copying the data:
-        # y = np.zeros([n, h2, w2, kh, kw, c])
-        # for ii in range(h2):
-        #     for jj in range(w2):
+        # y = np.zeros([n, h_output, w_output, kh, kw, c])
+        # for ii in range(h_output):
+        #     for jj in range(w_output):
         #         xx = ii * sh
         #         yy = jj * sw
         #         y[:, ii, jj, :, :, :] = x[:, xx:xx + kh, yy:yy + kw, :]
-        x_sn, x_sh, x_sw, x_sc = x.strides  # batch_size, height, width, channel
-        y_strides = (x_sn, sh * x_sh, sw * x_sw, x_sh, x_sw, x_sc)
-        y = np.ndarray((n, h2, w2, kh, kw, c),
-                    dtype=x.dtype,
-                    buffer=x.data,
-                    offset=self.array_offset(x),  # 0
-                    strides=y_strides)
+
+        # 计算步长
+        x_sn, x_sh, x_sw, x_sc = x.strides  # 获取原始数组的步长
+        # 计算输出数组的步长
+        y_strides = (
+            x_sn,           # batch维度步长
+            sh * x_sh,      # 输出高度维度步长
+            sw * x_sw,      # 输出宽度维度步长
+            x_sh,           # 卷积核高度维度步长
+            x_sw,           # 卷积核宽度维度步长
+            x_sc            # 通道维度步长
+        )
+        # 创建视图
+        y = np.ndarray(
+            (n, output_height, output_width, kh, kw, c),  # 输出形状
+            dtype=x.dtype,           # 数据类型
+            buffer=x.data,           # 数据缓冲区：数据存储的内存地址
+            offset=self._array_offset(x),  # 数组偏移量
+            strides=y_strides       # 步长
+        )
         return y
 
-    def calc(self, x, w, pad, stride):
+    def _calc(self, data, weight, pad, stride):
         '''将卷积核每次移动的感受野制作成矩阵
-
             Args:
-                x: [N, H, W, C]
+                data: [N, H, W, C]
                 w: [KH, KW, KC, KN]
                 pad: [PH, PW]
                 stride: [SH, SW]
-
             Return:
-                x: 感受野数据的矩阵形式，行表示kernel的移动次数，列对应kernel大小（也有可能是通道深度）
+                data: 感受野数据的矩阵形式
+                  - 行表示kernel的移动次数
+                  - 列对应kernel大小（也有可能是通道深度）
                 xs: (N, H', W', KH, KW, KC), 即图片数量、卷积输出高、卷积输出宽、kernel高、kernel宽、每个kernel通道数
         '''
-        ksize = w.shape[:2]
-        x = self.extract_sliding_windows(x, ksize, pad, stride)
-        ws = w.shape
-        w = w.reshape([ws[0] * ws[1] * ws[2], ws[3]])
-        xs = x.shape
-        x = x.reshape([xs[0] * xs[1] * xs[2], -1])
-
+        ksize = weight.shape[:2]
+        # 从原始输入数据中提取感受视野
+        data = self._extract_sliding_windows(data, ksize, pad, stride)
+        
+        # 将权重数据进行展平
+        weight_shape = weight.shape
+        weight = weight.reshape([weight_shape[0] * weight_shape[1] * weight_shape[2], weight_shape[3]])
+        # 将感受视野数据进行展平
+        data_shape = data.shape
+        data = data.reshape([data_shape[0] * data_shape[1] * data_shape[2], -1])
+        
+        # 矩阵乘法算子为Matmul时，将输入数据转换为uint8
         if isinstance(self.matmul, Matmul):
-            x = x.astype(np.uint8)
-        y = self.matmul(x, w)
-
-        y = y.reshape([xs[0], xs[1], xs[2], -1])
+            data = data.astype(np.uint8)
+        # 利用矩阵乘法进行卷积操作
+        y = self.matmul(data, weight)
+        # 将结果进行reshape，恢复到卷积输出的形状
+        y = y.reshape([data_shape[0], data_shape[1], data_shape[2], -1])
         return y
 
+    # 卷积层前向传播
     def forward(self, x):
+        # 输入数据量化
         input_data = x - self.zero_point['input']
+        # 权重数据量化
         w = self.w - self.zero_point['weight']
+        # 权重数据转置
         w = w.transpose(1,2,3,0)
-        output = self.calc(input_data, w, self.pad, self.stride)
+        # 计算卷积输出
+        output = self._calc(input_data, w, self.pad, self.stride)
+        # 加上偏置
         output += self.b
+        # 量化输出
         output = self.scale * output
+        # 加上量化零点
         output += self.zero_point['output']
+        # 输出数据截断
         output = np.clip(output, -128, 127)
         return output
 
@@ -340,14 +460,13 @@ class Pooling(object):
     # pad:是否进行填充
     def __init__(self, ksize, method, pad=False):
         '''
-        Args:
-            ksize: tuple, (ky, kx)
-            method: str, 'max': 最大池化
-                         'mean': 平均池化
-            pad: bool
-
-        Return:
-            返回池化层结果矩阵
+          Args:
+              ksize: tuple, (ky, kx)
+              method: str, 'max': 最大池化
+                          'mean': 平均池化
+              pad: bool, 是否进行填充
+          Return:
+              返回池化层结果矩阵
         '''
         self.ksize = ksize
         self.method = method
@@ -363,18 +482,26 @@ class Pooling(object):
         return output
 
     def forward(self, x):
+        # 将输入数据进行转置，将通道维度放在最后
         mat = x.transpose(1,2,0,3)
-
+        # 获取输入数据的高度和宽度
         m, n = mat.shape[:2]
+        # 获取池化核的大小
         ky, kx = self.ksize
-
+        
+        # 计算池化输出的大小的lambda函数：除并向上取整
         _ceil = lambda x, y: int(np.ceil(x / float(y)))
-
+        # 利用向上取整的特性进行填充
         if self.pad:
+            # 计算池化输出的高度
             ny = _ceil(m, ky)
+            # 计算池化输出的宽度
             nx = _ceil(n, kx)
+            # 计算池化输出的大小
             size = (ny * ky, nx * kx) + mat.shape[2:]
+            # 创建一个全为nan的数组，用于填充
             mat_pad = np.full(size, np.nan)
+            # 将输入数据填充到池化输出中
             mat_pad[:m, :n, ...] = mat
         else:
             ny = m // ky
@@ -383,6 +510,7 @@ class Pooling(object):
 
         new_shape = (ny, ky, nx, kx) + mat.shape[2:]
 
+        # 根据池化方法进行池化
         if self.method == 'max':
             result = np.nanmax(mat_pad.reshape(new_shape), axis=(1,3))
         elif self.method == 'mean':
@@ -390,7 +518,7 @@ class Pooling(object):
         else:
             raise ValueError('Pooling operator does not support method %s' % self.method)
 
-        # result = np.clip(result, -128, 127)
+        # 将结果进行转置，将通道维度放在最后
         return result.transpose(2,0,1,3)
 
 
@@ -400,52 +528,9 @@ class Flatten(object):
     def __call__(self, x):
         return self.forward(x)
 
+    # 展平层前向传播：利用reshape进行展平
     def forward(self, x):
         return x.reshape(x.shape[0], -1)
-
-
-# 量化参数
-class Quantization(object):
-    '''层级量化参数存储和处理'''
-    def __init__(self, scale, zero_point):
-        '''
-            Args:
-                scale: dict, 包含input, weight, output
-                zero_point: dict, 包含input, weight, output
-        '''
-        # 检查scale和zero_point是否符合要求
-        assert type(scale) is dict
-        assert type(zero_point) is dict
-        self.__check_dict(scale)
-        self.__check_dict(zero_point)
-
-        self.scale = scale
-        self.zero_point = zero_point
-
-        # 将字典值转换为ndarray
-        self.__val2ndarray(self.scale)
-        self.__val2ndarray(self.zero_point)
-
-    def __check_dict(self, x):
-        if ('input' in x) and ('weight' in x) and ('output' in x) == False:
-            raise KeyError('scale or zero_point must have input, weight and output items')
-
-    def __val2ndarray(self, x):
-        for key in x:
-            x[key] = np.array(x[key])
-
-    def get_ori_scale(self):
-        return self.scale
-
-    def get_scale(self):
-        '''
-            Return:
-                input_scale * weight_scale / output_scale
-        '''
-        return self.scale['input'] * self.scale['weight'] / self.scale['output']
-
-    def get_zero_point(self):
-        return self.zero_point
 
 if __name__ == '__main__':
 
